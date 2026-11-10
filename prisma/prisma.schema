@@ -1,0 +1,309 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum FilmStatus {
+  DRAFT
+  UPLOADING
+  PROCESSING
+  READY
+  PUBLISHED
+  FAILED
+}
+
+enum UploadStatus {
+  CREATED
+  UPLOADING
+  COMPLETED
+  FAILED
+  EXPIRED
+}
+
+enum MediaStatus {
+  UPLOADED
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum ProcessingStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum ProcessingStep {
+  VALIDATION
+  METADATA_EXTRACTION
+  THUMBNAIL_GENERATION
+  TRANSCODING
+  HLS_GENERATION
+  FINALIZATION
+}
+
+enum StreamingAssetStatus {
+  GENERATING
+  READY
+  FAILED
+}
+
+enum PremiereStatus {
+  SCHEDULED
+  LIVE
+  ENDED
+  CANCELLED
+}
+
+enum UserRole {
+  CREATOR
+  VIEWER
+  ADMIN
+}
+
+model Film {
+  id String @id
+
+  creatorId String
+
+  title String
+
+  synopsis String
+
+  premiereAt DateTime?
+
+  status FilmStatus
+
+  version Int
+
+  createdAt DateTime
+
+  updatedAt DateTime
+
+  mediaAssets     MediaAsset[]
+  streamingAssets StreamingAsset[]
+  premiere        Premiere?
+  viewSessions    ViewSession[]
+
+  @@map("films")
+}
+
+model User {
+  id           String   @id
+  email        String   @unique
+  passwordHash String
+  role         UserRole
+  createdAt    DateTime
+  updatedAt    DateTime
+
+  authSessions AuthSession[]
+  viewSessions ViewSession[]
+
+  @@map("users")
+}
+
+model AuthSession {
+  id               String    @id
+  userId           String
+  refreshTokenHash String
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime
+  updatedAt        DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+  @@map("auth_sessions")
+}
+
+model OutboxEvent {
+  id String @id
+
+  eventId String @unique
+
+  eventName String
+
+  aggregateId String
+
+  aggregateType String
+
+  aggregateVersion Int
+  correlationId    String?
+
+  payload Json
+
+  occurredAt DateTime
+
+  processedAt DateTime?
+
+  createdAt DateTime
+
+  @@index([processedAt])
+  @@index([aggregateId])
+  @@index([aggregateType, aggregateVersion])
+  @@index([correlationId])
+  @@map("outbox_events")
+}
+
+model UploadSession {
+  id String @id
+
+  filmId String
+
+  objectKey String
+
+  storageUploadId String
+
+  expectedSize BigInt
+
+  status UploadStatus
+
+  expiresAt DateTime
+
+  version Int
+
+  createdAt DateTime
+
+  updatedAt DateTime
+
+  @@index([filmId])
+  @@map("upload_sessions")
+}
+
+model MediaAsset {
+  id String @id
+
+  filmId String
+
+  film Film @relation(fields: [filmId], references: [id], onDelete: Cascade)
+
+  objectKey String @unique
+
+  etag String
+
+  sizeBytes       BigInt
+  durationSeconds Float?
+
+  contentType String?
+
+  status MediaStatus
+
+  version Int
+
+  createdAt DateTime
+
+  updatedAt DateTime
+
+  processingJob  ProcessingJob?
+  streamingAsset StreamingAsset?
+  viewSessions   ViewSession[]
+
+  @@index([filmId])
+  @@index([status])
+  @@map("media_assets")
+}
+
+model ProcessingJob {
+  id String @id
+
+  mediaAssetId String @unique
+
+  mediaAsset MediaAsset @relation(fields: [mediaAssetId], references: [id], onDelete: Cascade)
+
+  status ProcessingStatus
+
+  currentStep ProcessingStep?
+
+  attempts Int
+
+  errorMessage String?
+
+  startedAt DateTime?
+
+  completedAt DateTime?
+
+  version Int
+
+  createdAt DateTime
+
+  updatedAt DateTime
+
+  @@index([status, createdAt])
+  @@map("processing_jobs")
+}
+
+model StreamingAsset {
+  id                String               @id
+  filmId            String
+  mediaAssetId      String               @unique
+  masterPlaylistKey String
+  status            StreamingAssetStatus
+  version           Int
+  createdAt         DateTime
+  updatedAt         DateTime
+
+  film       Film       @relation(fields: [filmId], references: [id], onDelete: Cascade)
+  mediaAsset MediaAsset @relation(fields: [mediaAssetId], references: [id], onDelete: Cascade)
+
+  @@index([filmId, status, createdAt])
+  @@map("streaming_assets")
+}
+
+model Premiere {
+  id        String         @id
+  filmId    String         @unique
+  startsAt  DateTime
+  status    PremiereStatus
+  version   Int
+  createdAt DateTime
+  updatedAt DateTime
+
+  film Film @relation(fields: [filmId], references: [id], onDelete: Cascade)
+
+  @@index([status, startsAt])
+  @@map("premieres")
+}
+
+model ViewSession {
+  id                   String    @id
+  filmId               String
+  mediaAssetId         String
+  viewerId             String
+  device               String?
+  durationSeconds      Float
+  startedAt            DateTime
+  lastHeartbeatAt      DateTime
+  endedAt              DateTime?
+  watchDurationSeconds Int       @default(0)
+  completionPercent    Float     @default(0)
+
+  film       Film                 @relation(fields: [filmId], references: [id], onDelete: Cascade)
+  mediaAsset MediaAsset           @relation(fields: [mediaAssetId], references: [id], onDelete: Cascade)
+  viewer     User                 @relation(fields: [viewerId], references: [id], onDelete: Cascade)
+  renditions ViewRenditionUsage[]
+
+  @@index([filmId, startedAt])
+  @@index([viewerId, filmId])
+  @@index([mediaAssetId])
+  @@map("view_sessions")
+}
+
+model ViewRenditionUsage {
+  id                   String @id
+  viewSessionId        String
+  rendition            String
+  watchDurationSeconds Int    @default(0)
+
+  viewSession ViewSession @relation(fields: [viewSessionId], references: [id], onDelete: Cascade)
+
+  @@unique([viewSessionId, rendition])
+  @@index([rendition])
+  @@map("view_rendition_usage")
+}

@@ -1,0 +1,44 @@
+{
+  "type": "module",
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1162.0",
+    "@aws-sdk/s3-request-presigner": "^3.1162.0",
+    "@nestjs/bullmq": "^12.0.1",
+    "@nestjs/common": "^12.3.3",
+    "@nestjs/config": "^12.1.0",
+    "@nestjs/core": "^12.3.3",
+    "@nestjs/event-emitter": "^12.0.1",
+    "@nestjs/platform-express": "^12.3.3",
+    "@nestjs/schedule": "^12.0.2",
+    "@nestjs/swagger": "^12.1.1",
+    "@prisma/client": "^6.19.3",
+    "bullmq": "^6.7.1",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.15.1",
+    "eventemitter2": "^6.4.9",
+    "ioredis": "^6.0.0",
+    "nodemailer": "^10.3.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "swagger-ui-express": "^5.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/nodemailer": "^8.0.2",
+    "esbuild": "^0.28.2",
+    "prisma": "^6.19.3",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && esbuild dist/main.js --bundle --platform=node --format=esm --packages=external --outfile=dist/bundle.js --target=node22 && esbuild dist/worker.js --bundle --platform=node --format=esm --packages=external --outfile=dist/worker.bundle.js --target=node22",
+    "start": "node dist/bundle.js",
+    "start:prod": "node dist/bundle.js",
+    "start:worker": "node dist/worker.bundle.js",
+    "test": "tsx --test \"src/modules/**/*.spec.ts\"",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "prisma:validate": "prisma validate --schema prisma/prisma.schema",
+    "prisma:generate": "prisma generate --schema prisma/prisma.schema",
+    "prisma:migrate:deploy": "prisma migrate deploy --schema prisma/prisma.schema"
+  }
+}

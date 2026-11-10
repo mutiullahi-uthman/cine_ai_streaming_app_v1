@@ -1,0 +1,120 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command:
+      [
+        "redis-server",
+        "--appendonly",
+        "yes",
+        "--requirepass",
+        "${REDIS_PASSWORD:?Set REDIS_PASSWORD}",
+      ]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$${REDIS_PASSWORD}\" redis-cli ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  migrate:
+    build:
+      context: .
+      target: migrate
+    command: ["npm", "run", "prisma:migrate:deploy"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL to the Compose PostgreSQL service}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      target: runtime
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL to the Compose PostgreSQL service}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET to at least 32 bytes}
+      S3_BUCKET: ${S3_BUCKET:?Set S3_BUCKET}
+      S3_REGION: ${S3_REGION:?Set S3_REGION}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?Set S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?Set S3_SECRET_KEY}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      CDN_BASE_URL: ${CDN_BASE_URL:-}
+      CDN_COOKIE_DOMAIN: ${CDN_COOKIE_DOMAIN:-}
+      CLOUDFRONT_KEY_PAIR_ID: ${CLOUDFRONT_KEY_PAIR_ID:-}
+      CLOUDFRONT_PRIVATE_KEY: ${CLOUDFRONT_PRIVATE_KEY:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_SECURE: ${SMTP_SECURE:-}
+    ports:
+      - "${PORT:-3000}:3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/v1/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+  worker:
+    build:
+      context: .
+      target: runtime
+    command: ["npm", "run", "start:worker"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL to the Compose PostgreSQL service}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET to at least 32 bytes}
+      S3_BUCKET: ${S3_BUCKET:?Set S3_BUCKET}
+      S3_REGION: ${S3_REGION:?Set S3_REGION}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?Set S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?Set S3_SECRET_KEY}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_SECURE: ${SMTP_SECURE:-}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      disable: true
+
+volumes:
+  postgres_data:
+  redis_data:

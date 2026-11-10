@@ -1,0 +1,7 @@
+export enum UploadStatus {
+  CREATED = 'CREATED',
+  UPLOADING = 'UPLOADING',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED',
+  EXPIRED = 'EXPIRED',
+}
